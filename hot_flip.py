@@ -33,13 +33,60 @@ print(f'Probabilities{probs.detach().tolist()}')
 print(f"Loss:{loss.detach()}")
 id_to_word = {i:w for w, i in vocab.items()}
 model.zero_grad()
-# this line tells pytorch like hey i want to keep the gradients for this non leaf tensor
+
 emb.retain_grad()
 loss.backward()
 
-#capturing the gradients for all words 
+
 grad_per_position = emb.grad.detach()
 
 print('\n ------gradiet per position (each row = one word in sentence)---------')
 for i in range(len(x)):
     print(f'pos{i} word: {id_to_word[x[i].item()]} grad = {grad_per_position[i].tolist()}')
+
+E = model.embedding.weight.detach()  
+
+best = {
+    "score": -1e9,
+    "pos": None,
+    "from_id": None,
+    "to_id": None,
+}
+
+for pos in range(len(x)):
+    current_id = x[pos].item()
+    g = grad_per_position[pos]         
+    e_current = E[current_id]           
+
+    for cand_id in range(V):
+        if cand_id == current_id:
+            continue
+
+        e_cand = E[cand_id]
+        delta = e_cand - e_current
+        score = torch.dot(g, delta).item()
+
+        if score > best["score"]:
+            best["score"] = score
+            best["pos"] = pos
+            best["from_id"] = current_id
+            best["to_id"] = cand_id
+
+print("\n--- HOTFLIP DECISION ---")
+print("Best position to flip:", best["pos"])
+print("Replace:", id_to_word[best["from_id"]], "->", id_to_word[best["to_id"]])
+print("HotFlip score (bigger = more increases loss):", best["score"])
+
+
+x_flipped = x.clone()
+x_flipped[best["pos"]] = best["to_id"]
+
+logits2, _ = model(x_flipped)
+probs2 = F.softmax(logits2, dim=0)
+loss2 = F.cross_entropy(logits2.unsqueeze(0), target)
+
+print("\n--- AFTER HOTFLIP ---")
+print("Flipped sentence:", decode(x_flipped))
+print("Logits:", logits2.detach().tolist())
+print("Probabilities [neg, pos]:", probs2.detach().tolist())
+print("Loss:", float(loss2.detach()))
