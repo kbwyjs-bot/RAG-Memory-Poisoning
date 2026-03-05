@@ -32,6 +32,7 @@ print(f'logits: {logits.detach().tolist()}')
 print(f'Probabilities{probs.detach().tolist()}')
 print(f"Loss:{loss.detach()}")
 id_to_word = {i:w for w, i in vocab.items()}
+
 model.zero_grad()
 
 emb.retain_grad()
@@ -59,6 +60,7 @@ for pos in range(len(x)):
     e_current = E[current_id]           
 
     for cand_id in range(V):
+        #V is the length of vocabulary
         if cand_id == current_id:
             continue
 
@@ -84,6 +86,13 @@ x_flipped[best["pos"]] = best["to_id"]
 logits2, _ = model(x_flipped)
 probs2 = F.softmax(logits2, dim=0)
 loss2 = F.cross_entropy(logits2.unsqueeze(0), target)
+def decode(x):
+    words = []
+    for i in x:
+        word = id_to_word[i.item()]
+        words.append(word)
+    return words
+
 
 print("\n--- AFTER HOTFLIP ---")
 print("Flipped sentence:", decode(x_flipped))
