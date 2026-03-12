@@ -53,7 +53,7 @@ best = {
     "from_id": None,
     "to_id": None,
 }
-
+candidates = []
 for pos in range(len(x)):
     current_id = x[pos].item()
     g = grad_per_position[pos]         
@@ -66,36 +66,26 @@ for pos in range(len(x)):
 
         e_cand = E[cand_id]
         delta = e_cand - e_current
-        score = torch.dot(g, delta).item()
+        approx_score = torch.dot(g, delta).item()
 
-        if score > best["score"]:
-            best["score"] = score
-            best["pos"] = pos
-            best["from_id"] = current_id
-            best["to_id"] = cand_id
+        #copying the embedding and perfom hotflipe then feed it to the model
+        x_test = x.clone()
+        x_test[pos] = cand_id
+        test_logits, _ = model(x_test)
+        loss_test = F.cross_entropy(test_logits.unsqueeze(0), target).item()
+        candidates.append({
+            'pos':pos,
+            'from_id':current_id,
+            'to_id': cand_id,
+            'approx_score':approx_score,
+            'true_loss':loss_test,
+            'new_sentence':[id_to_word[i.item()] for i in x_test]
+        })
+        candidate_sorted = sorted(candidates, key = lambda z : z['approx_score'], reverse= True)
+        
+    for c in candidate_sorted[:5]:
+        print(f'pos = {c["pos"]} |'
+              f'{id_to_word[c["to_id"]]} |'
+              f'true loss = {c["true_loss"]: .6f} |'
+            f'sentences = {c["new_sentence"]}')
 
-print("\n--- HOTFLIP DECISION ---")
-print("Best position to flip:", best["pos"])
-print("Replace:", id_to_word[best["from_id"]], "->", id_to_word[best["to_id"]])
-print("HotFlip score (bigger = more increases loss):", best["score"])
-
-
-x_flipped = x.clone()
-x_flipped[best["pos"]] = best["to_id"]
-
-logits2, _ = model(x_flipped)
-probs2 = F.softmax(logits2, dim=0)
-loss2 = F.cross_entropy(logits2.unsqueeze(0), target)
-def decode(x):
-    words = []
-    for i in x:
-        word = id_to_word[i.item()]
-        words.append(word)
-    return words
-
-
-print("\n--- AFTER HOTFLIP ---")
-print("Flipped sentence:", decode(x_flipped))
-print("Logits:", logits2.detach().tolist())
-print("Probabilities [neg, pos]:", probs2.detach().tolist())
-print("Loss:", float(loss2.detach()))
